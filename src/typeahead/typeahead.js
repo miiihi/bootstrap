@@ -72,6 +72,9 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
         var inputFormatter = attrs.typeaheadInputFormatter ? $parse(attrs.typeaheadInputFormatter) : undefined;
 
         var appendToBody =  attrs.typeaheadAppendToBody ? originalScope.$eval(attrs.typeaheadAppendToBody) : false;
+        
+        // a callback, which returns an item (based on modelValue). Used, to get initial item.
+        var resolveItemCallback = attrs.typeaheadResolveItem ? $parse(attrs.typeaheadResolveItem) : undefined;        
 
         var focusFirst = originalScope.$eval(attrs.typeaheadFocusFirst) !== false;
 
@@ -306,6 +309,42 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
             }
           }
         });
+        
+        // run the models $formatters queue.
+        // FIXME: Refactor when PR is merged: https://github.com/angular/angular.js/pull/10764
+        var rerunFormatters = function () {
+            var formatters = modelCtrl.$formatters,
+            idx = formatters.length;
+
+            var viewValue = modelCtrl.$modelValue;
+            while (idx--) {
+                viewValue = formatters[idx](viewValue);
+            }
+
+            if (modelCtrl.$viewValue !== viewValue) {
+                modelCtrl.$viewValue = modelCtrl.$$lastCommittedViewValue = viewValue;
+                modelCtrl.$render();
+            }
+        };
+
+        // resolves the item, using resolveItemCallback
+        var getItem = function (modelValue) {
+            if (!resolveItemCallback) {
+              return $q.reject();
+            }
+              
+            // call the callback
+            var itemCallbackResult = resolveItemCallback(originalScope, { $model: modelValue });
+            // handle result
+            return $q.when(itemCallbackResult).then(function (item) {
+                // discard results, if model value changed or another selection was made
+                if (modelValue !== modelCtrl.$modelValue || modelValue != scope.lastModel) {
+                    return $q.reject();
+                }
+                // store resolved item
+                scope.lastItem = item;
+            });
+        };        
 
         modelCtrl.$formatters.push(function(modelValue) {
           var candidateViewValue, emptyViewValue;
@@ -317,9 +356,19 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
           if (!isEditable) {
             modelCtrl.$setValidity('editable', true);
           }
+          
+          // make sure, we have last model and item - if we don't, get the item and rerun
+          if (modelValue !== scope.lastModel) {
+              // we don't have correct item
+              // for now, run without it, but async get the item and rerun formatters if succesful
+              scope.lastModel = modelValue;
+              scope.lastItem = undefined;
+              getItem(modelValue).then(function () { rerunFormatters(); });
+          }          
 
           if (inputFormatter) {
             locals.$model = modelValue;
+            locals.$item = scope.lastItem;
             return inputFormatter(originalScope, locals);
           } else {
             //it might happen that we don't have enough info to properly render input value
