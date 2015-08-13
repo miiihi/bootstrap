@@ -8,11 +8,13 @@ angular.module('ui.bootstrap.timepicker', [])
   readonlyInput: false,
   mousewheel: true,
   arrowkeys: true,
-  showSpinners: true
+  showSpinners: true,
+  init: true,
+  initDate: null
 })
 
 .controller('TimepickerController', ['$scope', '$attrs', '$parse', '$log', '$locale', 'timepickerConfig', function($scope, $attrs, $parse, $log, $locale, timepickerConfig) {
-  var selected = new Date(),
+  var selected,
       ngModelCtrl = { $setViewValue: angular.noop }, // nullModelCtrl
       meridians = angular.isDefined($attrs.meridians) ? $scope.$parent.$eval($attrs.meridians) : timepickerConfig.meridians || $locale.DATETIME_FORMATS.AMPMS;
 
@@ -37,6 +39,10 @@ angular.module('ui.bootstrap.timepicker', [])
       this.setupArrowkeyEvents(hoursInputEl, minutesInputEl);
     }
 
+    if (angular.isDefined($attrs.init) ? $scope.$parent.$eval($attrs.init) : timepickerConfig.init) {
+      assertSelected();
+    }
+    
     $scope.readonlyInput = angular.isDefined($attrs.readonlyInput) ? $scope.$parent.$eval($attrs.readonlyInput) : timepickerConfig.readonlyInput;
     this.setupInputEvents(hoursInputEl, minutesInputEl);
   };
@@ -117,6 +123,15 @@ angular.module('ui.bootstrap.timepicker', [])
       }
     });
   }
+  
+  function assertSelected() {
+    if (!selected) {
+      selected = angular.isDefined($attrs.initDate) ? $scope.$parent.$eval($attrs.initDate) : timepickerConfig.initDate;
+      if (!selected) {
+       selected = new Date();
+      }
+    }
+  }  
 
   // Get $scope.hours in 24H mode if valid
   function getHoursFromTemplate() {
@@ -219,6 +234,7 @@ angular.module('ui.bootstrap.timepicker', [])
         minutes = getMinutesFromTemplate();
 
       if (angular.isDefined(hours) && angular.isDefined(minutes)) {
+        assertSelected();
         selected.setHours(hours);
         if (selected < min || selected > max) {
           invalidate(true);
@@ -243,6 +259,7 @@ angular.module('ui.bootstrap.timepicker', [])
         hours = getHoursFromTemplate();
 
       if (angular.isDefined(minutes) && angular.isDefined(hours)) {
+        assertSelected();
         selected.setMinutes(minutes);
         if (selected < min || selected > max) {
           invalidate(undefined, true);
@@ -300,6 +317,10 @@ angular.module('ui.bootstrap.timepicker', [])
   }
 
   function updateTemplate(keyboardChange) {
+    if (!selected) {
+      return;
+    }
+    
     var hours = selected.getHours(), minutes = selected.getMinutes();
 
     if ($scope.showMeridian) {
@@ -321,6 +342,7 @@ angular.module('ui.bootstrap.timepicker', [])
   }
 
   function addMinutesToSelected(minutes) {
+    assertSelected();
     selected = addMinutes(selected, minutes);
     refresh();
   }
