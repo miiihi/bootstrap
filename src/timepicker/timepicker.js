@@ -8,11 +8,13 @@ angular.module('ui.bootstrap.timepicker', [])
   readonlyInput: false,
   mousewheel: true,
   arrowkeys: true,
-  showSpinners: true
+  showSpinners: true,
+  init: true,
+  initDate: null
 })
 
 .controller('TimepickerController', ['$scope', '$attrs', '$parse', '$log', '$locale', 'timepickerConfig', function($scope, $attrs, $parse, $log, $locale, timepickerConfig) {
-  var selected = new Date(),
+  var selected,
       ngModelCtrl = { $setViewValue: angular.noop }, // nullModelCtrl
       meridians = angular.isDefined($attrs.meridians) ? $scope.$parent.$eval($attrs.meridians) : timepickerConfig.meridians || $locale.DATETIME_FORMATS.AMPMS;
 
@@ -37,6 +39,10 @@ angular.module('ui.bootstrap.timepicker', [])
       this.setupArrowkeyEvents(hoursInputEl, minutesInputEl);
     }
 
+    if (angular.isDefined($attrs.init) ? $scope.$parent.$eval($attrs.init) : timepickerConfig.init) {
+      assertSelected();
+    }
+    
     $scope.readonlyInput = angular.isDefined($attrs.readonlyInput) ? $scope.$parent.$eval($attrs.readonlyInput) : timepickerConfig.readonlyInput;
     this.setupInputEvents(hoursInputEl, minutesInputEl);
   };
@@ -68,39 +74,44 @@ angular.module('ui.bootstrap.timepicker', [])
   });
 
   $scope.noIncrementHours = function() {
-    var incrementedSelected = addMinutes(selected, hourStep * 60);
+    var tmpDate = selectedOrInitDate();
+    var incrementedSelected = addMinutes(tmpDate, hourStep * 60);
     return incrementedSelected > max ||
-      (incrementedSelected < selected && incrementedSelected < min);
+      (incrementedSelected < tmpDate && incrementedSelected < min);
   };
 
   $scope.noDecrementHours = function() {
-    var decrementedSelected = addMinutes(selected, -hourStep * 60);
+    var tmpDate = selectedOrInitDate();
+    var decrementedSelected = addMinutes(tmpDate, -hourStep * 60);
     return decrementedSelected < min ||
-      (decrementedSelected > selected && decrementedSelected > max);
+      (decrementedSelected > tmpDate && decrementedSelected > max);
   };
 
   $scope.noIncrementMinutes = function() {
-    var incrementedSelected = addMinutes(selected, minuteStep);
+    var tmpDate = selectedOrInitDate();
+    var incrementedSelected = addMinutes(tmpDate, minuteStep);
     return incrementedSelected > max ||
-      (incrementedSelected < selected && incrementedSelected < min);
+      (incrementedSelected < tmpDate && incrementedSelected < min);
   };
 
   $scope.noDecrementMinutes = function() {
-    var decrementedSelected = addMinutes(selected, -minuteStep);
+    var tmpDate = selectedOrInitDate();
+    var decrementedSelected = addMinutes(tmpDate, -minuteStep);
     return decrementedSelected < min ||
-      (decrementedSelected > selected && decrementedSelected > max);
+      (decrementedSelected > tmpDate && decrementedSelected > max);
   };
 
   $scope.noToggleMeridian = function() {
-    if (selected.getHours() < 13) {
-      return addMinutes(selected, 12 * 60) > max;
+    var tmpDate = selectedOrInitDate();
+    if (tmpDate.getHours() < 13) {
+      return addMinutes(tmpDate, 12 * 60) > max;
     } else {
-      return addMinutes(selected, -12 * 60) < min;
+      return addMinutes(tmpDate, -12 * 60) < min;
     }
   };
 
   // 12H / 24H mode
-  $scope.showMeridian = timepickerConfig.showMeridian;
+  $scope.showMeridian = (timepickerConfig.showMeridian === null || timepickerConfig.showMeridian === undefined) ? $locale.DATETIME_FORMATS.shortTime.indexOf('a') >= 0 : timepickerConfig.showMeridian;
   if ($attrs.showMeridian) {
     $scope.$parent.$watch($parse($attrs.showMeridian), function(value) {
       $scope.showMeridian = !!value;
@@ -117,6 +128,23 @@ angular.module('ui.bootstrap.timepicker', [])
       }
     });
   }
+  
+  function selectedOrInitDate() {
+    if (selected) {
+      return selected;
+    } 
+    var myDate = angular.isDefined($attrs.initDate) ? $scope.$parent.$eval($attrs.initDate) : timepickerConfig.initDate;
+    if (!myDate) {
+      myDate = new Date();
+    }
+    return myDate;
+  }
+
+  function assertSelected() {
+    if (!selected) {
+      selected = selectedOrInitDate();
+    }
+  } 
 
   // Get $scope.hours in 24H mode if valid
   function getHoursFromTemplate() {
@@ -219,6 +247,7 @@ angular.module('ui.bootstrap.timepicker', [])
         minutes = getMinutesFromTemplate();
 
       if (angular.isDefined(hours) && angular.isDefined(minutes)) {
+        assertSelected();
         selected.setHours(hours);
         if (selected < min || selected > max) {
           invalidate(true);
@@ -243,6 +272,7 @@ angular.module('ui.bootstrap.timepicker', [])
         hours = getHoursFromTemplate();
 
       if (angular.isDefined(minutes) && angular.isDefined(hours)) {
+        assertSelected();
         selected.setMinutes(minutes);
         if (selected < min || selected > max) {
           invalidate(undefined, true);
@@ -300,6 +330,10 @@ angular.module('ui.bootstrap.timepicker', [])
   }
 
   function updateTemplate(keyboardChange) {
+    if (!selected) {
+      return;
+    }
+    
     var hours = selected.getHours(), minutes = selected.getMinutes();
 
     if ($scope.showMeridian) {
@@ -321,6 +355,7 @@ angular.module('ui.bootstrap.timepicker', [])
   }
 
   function addMinutesToSelected(minutes) {
+    assertSelected();
     selected = addMinutes(selected, minutes);
     refresh();
   }
