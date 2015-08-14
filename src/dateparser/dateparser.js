@@ -5,15 +5,29 @@ angular.module('ui.bootstrap.dateparser', [])
   var SPECIAL_CHARACTERS_REGEXP = /[\\\^\$\*\+\?\|\[\]\(\)\.\{\}]/g;
 
   this.parsers = {};
+  
+  var indexOfCaseInsensitive = function(haystack, needle) {
+      needle = angular.lowercase(needle);
+      var idx = 0, len = haystack.length;
+      while ( idx < len) {
+          if (angular.lowercase(haystack[idx]) == needle) {
+            return idx;
+          }
+          idx++;
+      }
+      return -1;
+  };
+  
+  var twoDigitYearCutoff = 30;
 
   var formatCodeToRegex = {
     'yyyy': {
-      regex: '\\d{4}',
+      regex: '\\d{1,4}',
       apply: function(value) { this.year = +value; }
     },
     'yy': {
-      regex: '\\d{2}',
-      apply: function(value) { this.year = +value + 2000; }
+      regex: '\\d{1,4}',
+      apply: function(value) { this.year = +value; if (value.length == 2) { this.year += this.year < twoDigitYearCutoff ? 2000 : 1900; }}
     },
     'y': {
       regex: '\\d{1,4}',
@@ -21,26 +35,26 @@ angular.module('ui.bootstrap.dateparser', [])
     },
     'MMMM': {
       regex: $locale.DATETIME_FORMATS.MONTH.join('|'),
-      apply: function(value) { this.month = $locale.DATETIME_FORMATS.MONTH.indexOf(value); }
+      apply: function(value) { this.month = indexOfCaseInsensitive($locale.DATETIME_FORMATS.MONTH, value); }
     },
     'MMM': {
       regex: $locale.DATETIME_FORMATS.SHORTMONTH.join('|'),
-      apply: function(value) { this.month = $locale.DATETIME_FORMATS.SHORTMONTH.indexOf(value); }
+      apply: function(value) { this.month = indexOfCaseInsensitive($locale.DATETIME_FORMATS.SHORTMONTH, value); }
     },
     'MM': {
-      regex: '0[1-9]|1[0-2]',
+      regex: '0?[1-9]|1[0-2]',
       apply: function(value) { this.month = value - 1; }
     },
     'M': {
-      regex: '[1-9]|1[0-2]',
+      regex: '0?[1-9]|1[0-2]',
       apply: function(value) { this.month = value - 1; }
     },
     'dd': {
-      regex: '[0-2][0-9]{1}|3[0-1]{1}',
+      regex: '[0-2]?[0-9]{1}|3[0-1]{1}',
       apply: function(value) { this.date = +value; }
     },
     'd': {
-      regex: '[1-2]?[0-9]{1}|3[0-1]{1}',
+      regex: '[0-2]?[0-9]{1}|3[0-1]{1}',
       apply: function(value) { this.date = +value; }
     },
     'EEEE': {
@@ -50,7 +64,7 @@ angular.module('ui.bootstrap.dateparser', [])
       regex: $locale.DATETIME_FORMATS.SHORTDAY.join('|')
     },
     'HH': {
-      regex: '(?:0|1)[0-9]|2[0-3]',
+      regex: '(?:0?|1)[0-9]|2[0-3]',
       apply: function(value) { this.hours = +value; }
     },
     'hh': {
@@ -58,7 +72,7 @@ angular.module('ui.bootstrap.dateparser', [])
       apply: function(value) { this.hours = +value; }
     },
     'H': {
-      regex: '1?[0-9]|2[0-3]',
+      regex: '(?:0?|1)[0-9]|2[0-3]',
       apply: function(value) { this.hours = +value; }
     },
     'mm': {
@@ -116,8 +130,15 @@ angular.module('ui.bootstrap.dateparser', [])
       }
     });
 
+    // white space is not relevant, so be flexible about it...
+    angular.forEach(regex, function (regPart, idx) {
+      if (regPart === ' ') {
+        regex[idx] = '\\s*';
+      }
+    });
+    
     return {
-      regex: new RegExp('^' + regex.join('') + '$'),
+      regex: new RegExp('^' + regex.join('') + '$', 'i'),
       map: orderByFilter(map, 'index')
     };
   }

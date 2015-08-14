@@ -24,8 +24,8 @@ describe('date parser', function() {
     it('should work correctly for `yy`', function() {
       expectParse('17.11.13', 'dd.MM.yy', new Date(2013, 10, 17, 0));
       expectParse('02-05-11', 'dd-MM-yy', new Date(2011, 4, 2, 0));
-      expectParse('02/05/80', 'MM/dd/yy', new Date(2080, 1, 5, 0));
-      expectParse('55/02/05', 'yy/MM/dd', new Date(2055, 1, 5, 0));
+      expectParse('02/05/80', 'MM/dd/yy', new Date(1980, 1, 5, 0));
+      expectParse('55/02/05', 'yy/MM/dd', new Date(1955, 1, 5, 0));
       expectParse('11-08-13', 'dd-MM-yy', new Date(2013, 7, 11, 0));
     });
 
@@ -54,6 +54,7 @@ describe('date parser', function() {
 
     it('should work correctly for `d`', function() {
       expectParse('17.November.13', 'd.MMMM.yy', new Date(2013, 10, 17, 0));
+      expectParse('17.noveMber.13', 'd.MMMM.yy', new Date(2013, 10, 17, 0));
       expectParse('8-March-1991', 'd-MMMM-yyyy', new Date(1991, 2, 8, 0));
       expectParse('February/5/1980', 'MMMM/d/yyyy', new Date(1980, 1, 5, 0));
       expectParse('1955/February/5', 'yyyy/MMMM/d', new Date(1955, 1, 5, 0));
