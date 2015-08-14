@@ -51,6 +51,12 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
         //should it restrict model values to the ones selected from the popup only?
         var isEditable = originalScope.$eval(attrs.typeaheadEditable) !== false;
 
+        //should it reset viewValue on blur if invalid
+        var isInvalidReset = originalScope.$eval(attrs.typeaheadInvalidReset);
+        
+        // invalidReset implies not editable
+        isEditable = isInvalidReset ? false : isEditable;
+
         //binding to a variable that indicates if matches are being retrieved asynchronously
         var isLoadingSetter = $parse(attrs.typeaheadLoading).assign || angular.noop;
 
@@ -66,6 +72,9 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
         var inputFormatter = attrs.typeaheadInputFormatter ? $parse(attrs.typeaheadInputFormatter) : undefined;
 
         var appendToBody =  attrs.typeaheadAppendToBody ? originalScope.$eval(attrs.typeaheadAppendToBody) : false;
+        
+        // a callback, which returns an item (based on modelValue). Used, to get initial item.
+        var resolveItemCallback = attrs.typeaheadResolveItem ? $parse(attrs.typeaheadResolveItem) : undefined;        
 
         var focusFirst = originalScope.$eval(attrs.typeaheadFocusFirst) !== false;
 
@@ -74,6 +83,9 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
 
         //INTERNAL VARIABLES
 
+        //model getter
+        var $getModelValue = $parse(attrs.ngModel);
+        
         //model setter executed upon match selection
         var $setModelValue = $parse(attrs.ngModel).assign;
 
@@ -244,6 +256,12 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
 
         //we need to propagate user's query so we can higlight matches
         scope.query = undefined;
+        
+        //we need lastItem to be available in formatters
+        scope.lastItem = undefined;
+
+        //we need lastModel for sync checking last item
+        scope.lastModel = undefined;        
 
         //Declare the timeout promise var outside the function scope so that stacked calls can be cancelled later
         var timeoutPromise;
@@ -291,6 +309,42 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
             }
           }
         });
+        
+        // run the models $formatters queue.
+        // FIXME: Refactor when PR is merged: https://github.com/angular/angular.js/pull/10764
+        var rerunFormatters = function () {
+            var formatters = modelCtrl.$formatters,
+            idx = formatters.length;
+
+            var viewValue = modelCtrl.$modelValue;
+            while (idx--) {
+                viewValue = formatters[idx](viewValue);
+            }
+
+            if (modelCtrl.$viewValue !== viewValue) {
+                modelCtrl.$viewValue = modelCtrl.$$lastCommittedViewValue = viewValue;
+                modelCtrl.$render();
+            }
+        };
+
+        // resolves the item, using resolveItemCallback
+        var getItem = function (modelValue) {
+            if (!resolveItemCallback) {
+              return $q.reject();
+            }
+              
+            // call the callback
+            var itemCallbackResult = resolveItemCallback(originalScope, { $model: modelValue });
+            // handle result
+            return $q.when(itemCallbackResult).then(function (item) {
+                // discard results, if model value changed or another selection was made
+                if (modelValue !== modelCtrl.$modelValue || modelValue != scope.lastModel) {
+                    return $q.reject();
+                }
+                // store resolved item
+                scope.lastItem = item;
+            });
+        };        
 
         modelCtrl.$formatters.push(function(modelValue) {
           var candidateViewValue, emptyViewValue;
@@ -302,9 +356,19 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
           if (!isEditable) {
             modelCtrl.$setValidity('editable', true);
           }
+          
+          // make sure, we have last model and item - if we don't, get the item and rerun
+          if (modelValue !== scope.lastModel) {
+              // we don't have correct item
+              // for now, run without it, but async get the item and rerun formatters if succesful
+              scope.lastModel = modelValue;
+              scope.lastItem = undefined;
+              getItem(modelValue).then(function () { rerunFormatters(); });
+          }          
 
           if (inputFormatter) {
             locals.$model = modelValue;
+            locals.$item = scope.lastItem;
             return inputFormatter(originalScope, locals);
           } else {
             //it might happen that we don't have enough info to properly render input value
@@ -317,6 +381,18 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
             return candidateViewValue!== emptyViewValue ? candidateViewValue : modelValue;
           }
         });
+        
+        // add view change listener, to run onSelectCallback if model becomes empty
+        modelCtrl.$viewChangeListeners.push(function () {
+          var val = $getModelValue(originalScope);
+          if (typeof val === 'undefined' || val === '') {
+            onSelectCallback(originalScope, {
+              $item: undefined,
+              $model: undefined,
+              $label: undefined
+            });
+          }
+        });        
 
         scope.select = function(activeIdx) {
           //called from within the $digest() cycle
@@ -324,8 +400,8 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
           var model, item;
 
           selected = true;
-          locals[parserResult.itemName] = item = scope.matches[activeIdx].model;
-          model = parserResult.modelMapper(originalScope, locals);
+          locals[parserResult.itemName] = item = scope.lastItem = scope.matches[activeIdx].model;
+          scope.lastModel = model = parserResult.modelMapper(originalScope, locals);          
           $setModelValue(originalScope, model);
           modelCtrl.$setValidity('editable', true);
           modelCtrl.$setValidity('parse', true);
@@ -388,6 +464,22 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
               scope.select(scope.activeIdx);
             });
           }
+
+          // check, if we have to reset to last item.
+          if (isInvalidReset && modelCtrl.$error['editable']) {
+            originalScope.$apply(function (originalScope) {
+              $setModelValue(originalScope, scope.lastModel);
+              var locals = {};
+              locals[parserResult.itemName] = scope.lastItem;
+              onSelectCallback(originalScope, {
+                $item: scope.lastItem,
+                $model: scope.lastModel,
+                $label: parserResult.viewMapper(originalScope, locals)
+              });
+              modelCtrl.$setValidity('editable', true);
+            });
+          }
+          
           hasFocus = false;
           selected = false;
         });
