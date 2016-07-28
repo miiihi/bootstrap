@@ -312,6 +312,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
         
         // run the models $formatters queue.
         // FIXME: Refactor when PR is merged: https://github.com/angular/angular.js/pull/10764
+        // after setting the viewValue, we have to validate again
         var rerunFormatters = function () {
             var formatters = modelCtrl.$formatters,
             idx = formatters.length;
@@ -324,6 +325,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.position', 'ui.bootstrap
             if (modelCtrl.$viewValue !== viewValue) {
                 modelCtrl.$viewValue = modelCtrl.$$lastCommittedViewValue = viewValue;
                 modelCtrl.$render();
+                modelCtrl.$validate();
             }
         };
 
